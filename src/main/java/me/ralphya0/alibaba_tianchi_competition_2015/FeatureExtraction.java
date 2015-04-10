@@ -69,6 +69,7 @@ public class FeatureExtraction {
     final static Set<String> target_items = new HashSet<String>();
     //分割日期，如12-16 + 12-17 + 12-18(转换为小时)
     final static Map<String,Long> split_dates = new HashMap<String,Long>();
+    final static List<Long> split_dates_ordered = new ArrayList<Long>();
     
     public static void main(String[] args) throws IOException {
         //需要用户指定的运行参数
@@ -125,6 +126,7 @@ public class FeatureExtraction {
                         hour = 13 * 24 + (day - 1) * 24;
                     }
                     split_dates.put(month + "-" + day, hour);
+                    split_dates_ordered.add(hour);
                     month++;
                     day++;
                 }
@@ -226,9 +228,7 @@ public class FeatureExtraction {
                 for(InteractionRecord i : arg0._2){
                     
                     if(!history.containsKey(i.item_id)){
-                        String[] arr = split_dates.keySet().toArray(new String[0]);
-                        if(arr != null){
-                            for(String s : arr){
+                            for(long s : split_dates_ordered){
                                 Map<Long,Map<Long,Map<Integer,Integer>>> mm3 = new HashMap<Long,Map<Long,Map<Integer,Integer>>>();
                                 
                                 for(long j : tongji_hour){
@@ -239,15 +239,21 @@ public class FeatureExtraction {
                                     mm1.put(3, 0);
                                     mm1.put(4, 0);
                                     mm2.put(j, mm1);
-                                    mm3.put(split_dates.get(s), mm2);
+                                    mm3.put(s, mm2);
                                 }
                                 history.put(i.item_id, mm3);
                             }
-                        }
                         
                     }
                   //将各条记录插入数据结构的所有合适位置
-                    
+                  long inter_hour = i.hour;
+                  int action = Integer.parseInt(i.behavior_type);
+                  String brand = i.item_id;
+                  
+                  //主要关注该记录发生时间与各关键时间点的距离
+                  for(Long key_hour : split_dates_ordered){
+                      
+                  }
                 }
             }});
     }
