@@ -254,17 +254,19 @@ public class FeatureExtraction {
                   for(Long key_hour : split_dates_ordered){
                       //必须将key_hour当天及之后几天的数据排除在外!!!
                       if(inter_hour < key_hour){
-                          //long[] tongji_hour = {1, 3, 6, 12, 24, 72, 168, 720};
                         //Map<String,Map<Long,Map<Long,Map<Integer,Integer>>>>
                           //item_id,split_dates(12-16\12-17\12-18),tongji_hour(1,3,12),action,counter
-                          //范围不重叠 1,2~3,4~6,7~12,13~24,25~72
-                          if(key_hour - inter_hour == 1){
-                              Map<Long,Map<Long,Map<Integer,Integer>>> m1 = history.get(brand);
-                              Map<Long,Map<Integer,Integer>> m2 = m1.get(key_hour);
-                              Map<Integer,Integer> m3 = m2.get(1);
-                              m3.put(action, m3.get(action) + 1);
+                          //long[] tongji_hour = {1, 3, 6, 12, 24, 72, 168, 720};
+                          //范围重叠! 1,1~3,1~6,1~12,1~24,1~72
+                          for(long tezheng_h : tongji_hour){
+                              if(key_hour - inter_hour <= tezheng_h){
+                                  Map<Long,Map<Long,Map<Integer,Integer>>> m1 = history.get(brand);
+                                  Map<Long,Map<Integer,Integer>> m2 = m1.get(key_hour);
+                                  Map<Integer,Integer> m3 = m2.get(tezheng_h);
+                                  m3.put(action, m3.get(action) + 1);
+                              }
                           }
-                          //else if(key)
+                          
                           
                       }
                   }
