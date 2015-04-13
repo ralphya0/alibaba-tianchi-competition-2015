@@ -31,7 +31,7 @@ class InteractionRecord implements Serializable {
     String behavior_type;
     String user_geohash;
     String item_category;
-    //自11.18日零时起的小时数
+    //自11.18日零时起的小时数.因为选取的特征精度为小时
     long hour;
     String time;
     
@@ -123,14 +123,14 @@ public class FeatureExtraction {
     final static String[] zhuanhua = {"brand_4_to_brand_1",
         "brand_4_to_brand_2","brand_4_to_brand_3","brand_3_to_brand_1","brand_2_to_brand_1"};
     
-    //统计时间点
-    final static long[] tongji_hour = {1, 3, 6, 12, 24, 72, 168, 720,-1,-2};
+    //统计时间点(与split_hour的时间差).
+    final static long[] tongji_hour = {1, 3, 6, 12, 24, 72, 168, 720};
     
     //垂直商品列表
     final static Set<String> target_items = new HashSet<String>();
-    //分割日期，如12-16 + 12-17 + 12-18(转换为小时)
-    final static Map<Long,String> split_dates = new HashMap<Long,String>();
+    //将分割日期转换为小时(以11-18 0:00为起始时间)
     final static List<Long> split_dates_ordered = new ArrayList<Long>();
+    final static Map<Long,String> split_dates = new HashMap<Long,String>();
     
     public static void main(String[] args) throws IOException {
         //需要用户指定的运行参数
@@ -142,16 +142,14 @@ public class FeatureExtraction {
         String item_input = "null";
         //特征提取结果输出文件名前缀
         final String output_prefix = "/home/tianchi/project-base/tianchi/yaoxin/result/2015-4-13/";
-        //训练数据分割日期(输入12-16,则分割出12-16,12-17和12-18三个特征文件)
+        //训练数据分割日期(输入12-16,则分割出12-16,12-17,12-18和 #12-19# 四个特征文件)
         String split_date = "null";
-        //将原始训练数据按照日期拆分成独立文件
-        String file_split = "";
+        
         if(args != null && args.length > 0){
             master = args[0].trim();
             input = args[1].trim();
             item_input = args[2].trim();
             split_date = args[3].trim();
-            file_split = args[4].trim();
         }
         
         if(item_input != null && !item_input.equals("null")){
@@ -175,34 +173,31 @@ public class FeatureExtraction {
             String[] ls = split_date.split("-");
             if(ls != null ){
                 //假设month只为12
-                int month = Integer.parseInt(ls[0]);
                 int day = Integer.parseInt(ls[1]);
                 //也就是说,运行一遍该程序也会同时产生用于预测19号数据的特征文件(即包含12-18的交易记录)
                 while(day < 20){
                     long hour = 0;
-                    if(month == 11){
-                        hour = (day - 18) * 24;
-                    }
-                    else if(month == 12){
-                        hour = 13 * 24 + (day - 1) * 24;
-                    }
+                    hour = 13 * 24 + (day - 1) * 24;
                     split_dates.put(hour,ls[0] + ls[1]);
                     split_dates_ordered.add(hour);
-                    day++;
+                    day ++;
                 }
             }
         }
         
-        SparkConf conf = new SparkConf().setAppName("tianchi-feature-extraction").setMaster(master);
+        SparkConf conf = new SparkConf().setAppName("tianchi-feature-extraction-yx").setMaster(master);
         JavaSparkContext sc = new JavaSparkContext(conf);
-        
-        JavaRDD<String> lines = sc.textFile(input,3);
+        JavaRDD<String> lines = sc.textFile(input,3).filter(new Function<String,Boolean>(){
+
+            public Boolean call(String arg0) throws Exception {
+                //去除文件头
+                return !arg0.contains("user_id");
+            }});
         
         //每条记录的主键是user_id和item_id!!!
         //维护若干个数据结构来指示已经处理过的user_id+item_id的组合以避免重复计算,同时要为特征计算提供便利
         //各项特征都需要完整扫描训练数据
         //扫描过程中将同一用户的信息归并到一起然后输出到文件中(方便特征统计!!!),同时将原始数据按照日期拆分成独立文件(作为独立小功能)
-        //用户信息合并: Map<String,Map<String,Map<Integer,Map<Integer,Integer>>>> user_id, item_id,hours,action,count.其中hour的处理是关键
         //计算过程中涉及时间的操作一律统一以小时为计量单位
         
         //记得去除文件头!
