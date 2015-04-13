@@ -32,7 +32,7 @@ class InteractionRecord implements Serializable {
     String user_geohash;
     String item_category;
     //自11.18日零时起的小时数.因为选取的特征精度为小时
-    long hour;
+    int hour;
     String time;
     
 }
@@ -124,13 +124,13 @@ public class FeatureExtraction {
         "brand_4_to_brand_2","brand_4_to_brand_3","brand_3_to_brand_1","brand_2_to_brand_1"};
     
     //统计时间点(与split_hour的时间差).
-    final static long[] tongji_hour = {1, 3, 6, 12, 24, 72, 168, 720};
+    final static int[] tongji_hour = {1, 3, 6, 12, 24, 72, 168, 720};
     
     //垂直商品列表
     final static Set<String> target_items = new HashSet<String>();
     //将分割日期转换为小时(以11-18 0:00为起始时间)
-    final static List<Long> split_dates_ordered = new ArrayList<Long>();
-    final static Map<Long,String> split_dates = new HashMap<Long,String>();
+    final static List<Integer> split_dates_ordered = new ArrayList<Integer>();
+    final static Map<Integer,String> split_dates = new HashMap<Integer,String>();
     
     public static void main(String[] args) throws IOException {
         //需要用户指定的运行参数
@@ -176,7 +176,7 @@ public class FeatureExtraction {
                 int day = Integer.parseInt(ls[1]);
                 //也就是说,运行一遍该程序也会同时产生用于预测19号数据的特征文件(即包含12-18的交易记录)
                 while(day < 20){
-                    long hour = 0;
+                    int hour = 0;
                     hour = 13 * 24 + (day - 1) * 24;
                     split_dates.put(hour,ls[0] + ls[1]);
                     split_dates_ordered.add(hour);
@@ -190,8 +190,16 @@ public class FeatureExtraction {
         JavaRDD<String> lines = sc.textFile(input,3).filter(new Function<String,Boolean>(){
 
             public Boolean call(String arg0) throws Exception {
-                //去除文件头
-                return !arg0.contains("user_id");
+                //去除文件头并且将不感兴趣的商品过滤掉
+                String[] al = arg0.split(",");
+                if(al != null){
+                    if(al[0].equals("user_id"))
+                        return false;
+                    
+                    if(target_items.contains(al[1]))
+                        return true;
+                }
+                return false;
             }});
         
         //每条记录的主键是user_id和item_id!!!
@@ -257,35 +265,28 @@ public class FeatureExtraction {
             }
         });
         
-        //只保留垂直商品列表
-        JavaPairRDD<String,InteractionRecord> filter = pairs.filter(new Function<Tuple2<String,InteractionRecord>,Boolean>(){
-
-            public Boolean call(Tuple2<String, InteractionRecord> arg0)
-                    throws Exception {
-               
-                return target_items.contains(arg0._2.item_id);
-            }});
         
-        JavaPairRDD<String,Iterable<InteractionRecord>> userid_grouped = filter.groupByKey();
+        JavaPairRDD<String,Iterable<InteractionRecord>> userid_grouped = pairs.groupByKey();
         
         //计算结果直接写入hdfs中
         //key为split_hour,因为同一split_hour的特征要写入同一个文件
-       JavaPairRDD<Long,Features> features = userid_grouped
-               .flatMapToPair(new PairFlatMapFunction<Tuple2<String,Iterable<InteractionRecord>>,Long,Features>(){
+       JavaPairRDD<Integer,Features> features = userid_grouped
+               .flatMapToPair(new PairFlatMapFunction<Tuple2<String,Iterable<InteractionRecord>>,Integer,Features>(){
 
-                public Iterable<Tuple2<Long, Features>> call(
+                public Iterable<Tuple2<Integer, Features>> call(
                         Tuple2<String, Iterable<InteractionRecord>> arg0)
                         throws Exception {
-                    List<Tuple2<Long,Features>> res = new ArrayList<Tuple2<Long,Features>>();
-                    
+                    //结果集
+                    List<Tuple2<Integer,Features>> res = new ArrayList<Tuple2<Integer,Features>>();
                     
                     String user_id = arg0._1;
                     //采用的数据结构:
-                    Map<String,Map<Long,Map<Long,Map<Integer,Integer>>>> history = 
-                            new HashMap<String,Map<Long,Map<Long,Map<Integer,Integer>>>>();
+                    Map<String,Map<Integer,Map<Integer,Map<Integer,Integer>>>> history = 
+                            new HashMap<String,Map<Integer,Map<Integer,Map<Integer,Integer>>>>();
                     
                     //注意,这是总活跃日期信息,在使用其中的信息时必须根据split_date过滤不符合要求的日期
                     //用active_days.size()判断当天用户是否产生访问行为
+                    //date(e.g. 1128),brand_id,action,counter
                     Map<Integer,Map<String,Map<Integer,Integer>>> active_days = new HashMap<Integer,Map<String,Map<Integer,Integer>>>();
                     for(int i = 1118;i <= 1218;i ++){
                         if(i == 1131){
@@ -296,14 +297,15 @@ public class FeatureExtraction {
                             active_days.put(i, m);
                         }
                     }
+                    
                     for(InteractionRecord i : arg0._2){
                         
                         if(!history.containsKey(i.item_id)){
-                                Map<Long,Map<Long,Map<Integer,Integer>>> mm3 = new HashMap<Long,Map<Long,Map<Integer,Integer>>>();
+                                Map<Integer,Map<Integer,Map<Integer,Integer>>> mm3 = new HashMap<Integer,Map<Integer,Map<Integer,Integer>>>();
                                 
-                                for(long s : split_dates_ordered){
-                                    Map<Long,Map<Integer,Integer>> mm2 = new HashMap<Long,Map<Integer,Integer>>();
-                                    for(long j : tongji_hour){
+                                for(int s : split_dates_ordered){
+                                    Map<Integer,Map<Integer,Integer>> mm2 = new HashMap<Integer,Map<Integer,Integer>>();
+                                    for(int j : tongji_hour){
                                         Map<Integer,Integer> mm1 = new HashMap<Integer,Integer>();
                                         mm1.put(1, 0);
                                         mm1.put(2, 0);
@@ -318,7 +320,7 @@ public class FeatureExtraction {
                                     tmp1.put(3, 0);
                                     tmp1.put(4, 0);
                                     
-                                    mm2.put((long) -1, tmp1);
+                                    mm2.put(-1, tmp1);
                                     
                                     Map<Integer,Integer> tmp2 = new HashMap<Integer,Integer>();
                                     tmp2.put(1, 0);
@@ -326,7 +328,7 @@ public class FeatureExtraction {
                                     tmp2.put(3, 0);
                                     tmp2.put(4, 0);
                                     
-                                    mm2.put((long) -2, tmp2);
+                                    mm2.put(-2, tmp2);
                                     
                                     mm3.put(s, mm2);
                                 }
@@ -334,7 +336,7 @@ public class FeatureExtraction {
                                 
                         }
                       //将各条记录插入数据结构的所有合适位置
-                      long inter_hour = i.hour;
+                      int inter_hour = i.hour;
                       int action = Integer.parseInt(i.behavior_type);
                       String brand = i.item_id;
                       String time = i.time;
@@ -362,17 +364,17 @@ public class FeatureExtraction {
                       }
                       
                       //主要关注该记录发生时间与各关键时间点的距离
-                      for(Long split_hour : split_dates_ordered){
-                          //必须将key_hour当天及之后几天的数据排除在外!!!
+                      for(int split_hour : split_dates_ordered){
+                          //必须将split_hour当天及之后几天的数据排除在外!!!
                           if(inter_hour < split_hour){
                             //Map<String,Map<Long,Map<Long,Map<Integer,Integer>>>>
                               //item_id,split_dates(12-16\12-17\12-18),tongji_hour(1,3,12),action,counter
                               //long[] tongji_hour = {1, 3, 6, 12, 24, 72, 168, 720};
                               //范围重叠! 1,1~3,1~6,1~12,1~24,1~72
-                              for(long tezheng_h : tongji_hour){
+                              for(int tezheng_h : tongji_hour){
                                   if(split_hour - inter_hour <= tezheng_h){
-                                      Map<Long,Map<Long,Map<Integer,Integer>>> m1 = history.get(brand);
-                                      Map<Long,Map<Integer,Integer>> m2 = m1.get(split_hour);
+                                      Map<Integer,Map<Integer,Map<Integer,Integer>>> m1 = history.get(brand);
+                                      Map<Integer,Map<Integer,Integer>> m2 = m1.get(split_hour);
                                       Map<Integer,Integer> m3 = m2.get(tezheng_h);
                                       m3.put(action, m3.get(action) + 1);
                                   }
@@ -381,40 +383,38 @@ public class FeatureExtraction {
                               if(history.get(brand).get(split_hour).containsKey(-1) && history.get(brand).get(split_hour).containsKey(-2)){
                                   if(history.get(brand).get(split_hour).get(-1).get(action) == 0
                                           && history.get(brand).get(split_hour).get(-2).get(action) == 0){
-                                      history.get(brand).get(split_hour).get(-1).put(action, (int) inter_hour);
-                                      history.get(brand).get(split_hour).get(-2).put(action, (int) inter_hour);
+                                      history.get(brand).get(split_hour).get(-1).put(action, inter_hour);
+                                      history.get(brand).get(split_hour).get(-2).put(action, inter_hour);
                                   }
                                   else if(history.get(brand).get(split_hour).get(-1).get(action) > inter_hour){
-                                      history.get(brand).get(split_hour).get(-1).put(action, (int) inter_hour);
+                                      history.get(brand).get(split_hour).get(-1).put(action, inter_hour);
                                   }
                                   else if(history.get(brand).get(split_hour).get(-2).get(action) < inter_hour){
-                                      history.get(brand).get(split_hour).get(-2).put(action,(int) inter_hour);
+                                      history.get(brand).get(split_hour).get(-2).put(action, inter_hour);
                                   }
                               }
                           }
                       }
                     }
                     
-                    //Map<String,Map<Long,Map<Long,Map<Integer,Integer>>>>
-                    //item_id,split_dates(12-16\12-17\12-18),tongji_hour(1,3,12),action,counter
-                    //records插入结束,借助history对各个brand计算各项特征
+                    
+                    //records已经插入到数据结构中,借助history和active_days对各个brand计算各项特征
                     String[] brands = history.keySet().toArray(new String[0]);
                     if(brands != null){
                         for(String bid : brands){
-                            Map<Long,Map<Long,Map<Integer,Integer>>> m1 = history.get(bid);
+                            Map<Integer,Map<Integer,Map<Integer,Integer>>> m1 = history.get(bid);
                             if(m1 != null){
-                                Long[] split_hours = m1.keySet().toArray(new Long[0]);
-                                if(split_hours != null){
-                                    for(long split_h : split_hours){
-                                        Map<Long,Map<Integer,Integer>> m2 = m1.get(split_h);
+                                    //对每个brand,生成split_days个统计数据
+                                    for(Integer split_h : split_dates_ordered){
+                                        Map<Integer,Map<Integer,Integer>> m2 = m1.get(split_h);
                                       
                                         if(m2 != null){
-                                            //不同的split_h输出独立的Feature
+                                            //不同的split_h输出独立的Features
                                             Features f = new Features();
                                             f.user_id = user_id;
                                             f.item_id = bid;
                                             
-                                            //final static long[] tongji_hour = {1, 3, 6, 12, 24, 72, 168, 720,-1,-2};
+                                            //final static long[] tongji_hour = {1, 3, 6, 12, 24, 72, 168, 720};
                                             //因为tongji_hour中元素顺序与目标特征之间没有关联,所以只能手动逐个计算
                                             //先计算统计特征
                                             if(m2.containsKey(1)){
@@ -466,10 +466,10 @@ public class FeatureExtraction {
                                             }
                                             if(m2.containsKey(-2) && m2.containsKey(-1)){
                                                 Map<Integer,Integer> m3 = m2.get(-2);
-                                                f.tongji_feature25 = (int) (split_h - m3.get(1));
-                                                f.tongji_feature26 = (int) (split_h - m3.get(2));
-                                                f.tongji_feature27 = (int) (split_h - m3.get(3));
-                                                f.tongji_feature28 = (int) (split_h - m3.get(4));
+                                                f.tongji_feature25 = split_h - m3.get(1);
+                                                f.tongji_feature26 = split_h - m3.get(2);
+                                                f.tongji_feature27 = split_h - m3.get(3);
+                                                f.tongji_feature28 = split_h - m3.get(4);
                                                 
                                                 Map<Integer,Integer> m4 = m2.get(-1);
                                                 f.tongji_feature29 = m3.get(1) - m4.get(1);
@@ -479,7 +479,7 @@ public class FeatureExtraction {
                                             }
                                             
                                             //计算比率特征
-                                            //当前split_hour之前用户对所有品牌的各项访问总计数
+                                            //该split_hour之前用户对所有品牌的各项访问总计数
                                             int total_1_ct = 0;
                                             int total_2_ct = 0;
                                             int total_3_ct = 0;
@@ -500,7 +500,7 @@ public class FeatureExtraction {
                                             
                                             String[] brands_tmp = history.keySet().toArray(new String[0]);
                                             for(String b_name : brands_tmp){
-                                                Map<Long,Map<Integer,Integer>> m3 = history.get(b_name).get(split_h);
+                                                Map<Integer,Map<Integer,Integer>> m3 = history.get(b_name).get(split_h);
                                                 total_1_ct += m3.get(720).get(1);
                                                 total_2_ct += m3.get(720).get(2);
                                                 total_3_ct += m3.get(720).get(3);
@@ -526,8 +526,6 @@ public class FeatureExtraction {
                                                            if(m6.get(4) > 0){
                                                                brand_4_days ++;
                                                            }
-                                                           
-                                                           
                                                        }
                                                        String[] bs = m5.keySet().toArray(new String[0]);
                                                        if(bs != null){
@@ -556,7 +554,10 @@ public class FeatureExtraction {
                                                                }
                                                                
                                                                if(flag5){
-                                                                   x_day_total_1234_times ++;
+                                                                   x_day_total_1234_times += m5.get(bname).get(1);
+                                                                   x_day_total_1234_times += m5.get(bname).get(2);
+                                                                   x_day_total_1234_times += m5.get(bname).get(3);
+                                                                   x_day_total_1234_times += m5.get(bname).get(4);
                                                                }
                                                                if(flag1 && flag2 && flag3 && flag4 && !flag5){
                                                                    break;
@@ -612,26 +613,26 @@ public class FeatureExtraction {
                                                 f.zhuanhua_feature3 = m2.get(720).get(4) / m2.get(720).get(3);
                                             }
                                             
-                                            res.add(new Tuple2<Long,Features>(split_h,f));
+                                            res.add(new Tuple2<Integer,Features>(split_h,f));
                                         }
                                         
                                     }
                                 }
-                            }
                         }
                     }
                     return res;
                 }});
        
-       JavaPairRDD<Long,Iterable<Features>> grouped_features = features.groupByKey();
+       JavaPairRDD<Integer,Iterable<Features>> grouped_features = features.groupByKey();
        //将同一split_hour的特征信息输出
-       grouped_features.foreach(new VoidFunction<Tuple2<Long,Iterable<Features>>>(){
+       grouped_features.foreach(new VoidFunction<Tuple2<Integer,Iterable<Features>>>(){
 
-        public void call(Tuple2<Long, Iterable<Features>> arg0)
+        public void call(Tuple2<Integer, Iterable<Features>> arg0)
                 throws Exception {
+            
             //输出
             StringBuilder sb = new StringBuilder();
-            sb.append("用户在前1小时浏览品牌次数,用户在前1小时收藏品牌次数,用户在前1小时加入购物车次数,用户在前1小时购买品牌次数,"
+            sb.append("user_id,item_id,用户在前1小时浏览品牌次数,用户在前1小时收藏品牌次数,用户在前1小时加入购物车次数,用户在前1小时购买品牌次数,"
                     + "用户在前6小时浏览品牌次数,用户在前6小时收藏品牌次数,用户在前6小时加入购物车次数,用户在前6小时购买品牌次数,"
                     + "用户在前24小时浏览品牌次数,用户在前24小时收藏品牌次数,用户在前24小时加入购物车次数,用户在前24小时购买品牌次数,"
                     + "用户在前72小时浏览品牌次数,用户在前72小时收藏品牌次数,用户在前72小时加入购物车次数,用户在前72小时购买品牌次数,"
@@ -646,7 +647,7 @@ public class FeatureExtraction {
                     + "用户对品牌浏览-购买转化率,用户对品牌收藏-购买转化率,用户对品牌加入购物车-购买转化率,用户对品牌浏览-收藏转化率,"
                     + "用户对品牌浏览-加入购物车转化率" + "\n");
             for(Features f : arg0._2){
-                sb.append(f.tongji_feature1 + "," + f.tongji_feature2 + "," + f.tongji_feature3 + "," + f.tongji_feature4 + "," +
+                sb.append(f.user_id + "," + f.item_id + "," + f.tongji_feature1 + "," + f.tongji_feature2 + "," + f.tongji_feature3 + "," + f.tongji_feature4 + "," +
                         f.tongji_feature5 + "," + f.tongji_feature6 + "," + f.tongji_feature7 + "," + f.tongji_feature8 + "," +
                         f.tongji_feature9 + "," + f.tongji_feature10 + "," + f.tongji_feature11 + "," + f.tongji_feature12 + "," +
                         f.tongji_feature13 + "," + f.tongji_feature14 + "," + f.tongji_feature15 + "," + f.tongji_feature16 + "," +
