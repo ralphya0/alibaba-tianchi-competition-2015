@@ -1,8 +1,10 @@
 package me.ralphya0.alibaba_tianchi_competition_2015;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -127,7 +129,7 @@ public class FeatureExtraction {
     //垂直商品列表
     final static Set<String> target_items = new HashSet<String>();
     //分割日期，如12-16 + 12-17 + 12-18(转换为小时)
-    final static Map<String,Long> split_dates = new HashMap<String,Long>();
+    final static Map<Long,String> split_dates = new HashMap<Long,String>();
     final static List<Long> split_dates_ordered = new ArrayList<Long>();
     
     public static void main(String[] args) throws IOException {
@@ -138,8 +140,8 @@ public class FeatureExtraction {
         String input = "null";
         //垂直商品文件
         String item_input = "null";
-        //特征提取结果输出hdfs目录
-        String hdfs_out = "null";
+        //特征提取结果输出文件名前缀
+        final String output_prefix = "/home/tianchi/project-base/tianchi/yaoxin/result/2015-4-13/";
         //训练数据分割日期(输入12-16,则分割出12-16,12-17和12-18三个特征文件)
         String split_date = "null";
         //将原始训练数据按照日期拆分成独立文件
@@ -148,9 +150,8 @@ public class FeatureExtraction {
             master = args[0].trim();
             input = args[1].trim();
             item_input = args[2].trim();
-            hdfs_out = args[3].trim();
-            split_date = args[4].trim();
-            file_split = args[5].trim();
+            split_date = args[3].trim();
+            file_split = args[4].trim();
         }
         
         if(item_input != null && !item_input.equals("null")){
@@ -173,10 +174,11 @@ public class FeatureExtraction {
             //转换为小时
             String[] ls = split_date.split("-");
             if(ls != null ){
+                //假设month只为12
                 int month = Integer.parseInt(ls[0]);
                 int day = Integer.parseInt(ls[1]);
-                
-                while(!(month == 12 && day == 19)){
+                //也就是说,运行一遍该程序也会同时产生用于预测19号数据的特征文件(即包含12-18的交易记录)
+                while(day < 20){
                     long hour = 0;
                     if(month == 11){
                         hour = (day - 18) * 24;
@@ -184,9 +186,8 @@ public class FeatureExtraction {
                     else if(month == 12){
                         hour = 13 * 24 + (day - 1) * 24;
                     }
-                    split_dates.put(month + "-" + day, hour);
+                    split_dates.put(hour,ls[0] + ls[1]);
                     split_dates_ordered.add(hour);
-                    month++;
                     day++;
                 }
             }
@@ -272,20 +273,24 @@ public class FeatureExtraction {
         
         JavaPairRDD<String,Iterable<InteractionRecord>> userid_grouped = filter.groupByKey();
         
-        //hehe, 忽然发现把records以user_id聚合之后可以直接计算各种特征啦,各种复杂的数据结构可以省略掉 : )
         //计算结果直接写入hdfs中
+        //key为split_hour,因为同一split_hour的特征要写入同一个文件
        JavaPairRDD<Long,Features> features = userid_grouped
                .flatMapToPair(new PairFlatMapFunction<Tuple2<String,Iterable<InteractionRecord>>,Long,Features>(){
 
                 public Iterable<Tuple2<Long, Features>> call(
                         Tuple2<String, Iterable<InteractionRecord>> arg0)
                         throws Exception {
+                    List<Tuple2<Long,Features>> res = new ArrayList<Tuple2<Long,Features>>();
+                    
+                    
                     String user_id = arg0._1;
                     //采用的数据结构:
                     Map<String,Map<Long,Map<Long,Map<Integer,Integer>>>> history = 
                             new HashMap<String,Map<Long,Map<Long,Map<Integer,Integer>>>>();
                     
                     //注意,这是总活跃日期信息,在使用其中的信息时必须根据split_date过滤不符合要求的日期
+                    //用active_days.size()判断当天用户是否产生访问行为
                     Map<Integer,Map<String,Map<Integer,Integer>>> active_days = new HashMap<Integer,Map<String,Map<Integer,Integer>>>();
                     for(int i = 1118;i <= 1218;i ++){
                         if(i == 1131){
@@ -311,6 +316,22 @@ public class FeatureExtraction {
                                         mm1.put(4, 0);
                                         mm2.put(j, mm1);
                                     }
+                                    //另外还需记录各品牌第一次和最后一次访问时间,设置一对特殊的tongji_hour 来表征这两项信息,-1表示第一次,-2表示最后一次
+                                    Map<Integer,Integer> tmp1 = new HashMap<Integer,Integer>();
+                                    tmp1.put(1, 0);
+                                    tmp1.put(2, 0);
+                                    tmp1.put(3, 0);
+                                    tmp1.put(4, 0);
+                                    
+                                    mm2.put((long) -1, tmp1);
+                                    
+                                    Map<Integer,Integer> tmp2 = new HashMap<Integer,Integer>();
+                                    tmp2.put(1, 0);
+                                    tmp2.put(2, 0);
+                                    tmp2.put(3, 0);
+                                    tmp2.put(4, 0);
+                                    
+                                    mm2.put((long) -2, tmp2);
                                     
                                     mm3.put(s, mm2);
                                 }
@@ -323,6 +344,27 @@ public class FeatureExtraction {
                       String brand = i.item_id;
                       String time = i.time;
                       
+                      //更新active_days信息
+                      if(time != null && time.length() > 0){
+                          String[] al = time.split(" ");
+                          if(al != null){
+                              String[] al2 = al[0].split("-");
+                              if(al2 != null){
+                                  //生成日期
+                                  int key = Integer.parseInt(al2[1] + al2[2]);
+                                  Map<String,Map<Integer,Integer>> m4 = active_days.get(key);
+                                  if(!m4.containsKey(brand)){
+                                      Map<Integer,Integer> m5 = new HashMap<Integer,Integer>();
+                                      m5.put(1, 0);
+                                      m5.put(2, 0);
+                                      m5.put(3, 0);
+                                      m5.put(4, 0);
+                                      m4.put(brand, m5);
+                                  }
+                                  m4.get(brand).put(action, m4.get(brand).get(action) + 1);
+                              }
+                          }
+                      }
                       
                       //主要关注该记录发生时间与各关键时间点的距离
                       for(Long split_hour : split_dates_ordered){
@@ -341,7 +383,6 @@ public class FeatureExtraction {
                                   }
                               }
                               //第一次访问及最后一次访问
-                              //改!!!!!!!!!!!!!!!
                               if(history.get(brand).get(split_hour).containsKey(-1) && history.get(brand).get(split_hour).containsKey(-2)){
                                   if(history.get(brand).get(split_hour).get(-1).get(action) == 0
                                           && history.get(brand).get(split_hour).get(-2).get(action) == 0){
@@ -353,20 +394,6 @@ public class FeatureExtraction {
                                   }
                                   else if(history.get(brand).get(split_hour).get(-2).get(action) < inter_hour){
                                       history.get(brand).get(split_hour).get(-2).put(action,(int) inter_hour);
-                                  }
-                              }
-                              
-                              //更新该对商品的访问日期及总活跃日期信息
-                              String[] al = time.split(" ");
-                              if(al != null){
-                                  String[] al2 = al[0].split("-");
-                                  if(al2 != null){
-                                      String date_str = "-" + al2[1] + al2[2];
-                                      int key = Integer.parseInt(date_str);
-                                      Map<Integer,Integer> m5 = history.get(brand).get(split_hour).get(key);
-                                      m5.put(action, m5.get(action) + 1);
-                                      
-                                      //active_days.get(key).put(action, active_days.get(key).get(action) + 1);
                                   }
                               }
                           }
@@ -467,6 +494,14 @@ public class FeatureExtraction {
                                             int user_2_days = 0;
                                             int user_3_days = 0;
                                             int user_4_days = 0;
+                                            int brand_1234_times = 0;
+                                            int x_day_total_1234_times = 0;
+                                            int brand_1234_days = 0;
+                                            int brand_4_days = 0;
+                                            
+                                            //将split_hour转换为由4位整数表示的日期形式,方便与active_days的主键进行对比
+                                            int split_day_int = Integer.parseInt(split_dates.get(split_h));
+                                            
                                             
                                             String[] brands_tmp = history.keySet().toArray(new String[0]);
                                             for(String b_name : brands_tmp){
@@ -476,57 +511,164 @@ public class FeatureExtraction {
                                                 total_3_ct += m3.get(720).get(3);
                                                 total_4_ct += m3.get(720).get(4);
                                                 
-                                                for(int h = -1218; h <= -1118; h ++){
-                                                    //user_active
-                                                }
+                                            }
+                                            Integer[] days = active_days.keySet().toArray(new Integer[0]);
+                                            if(days != null){
+                                               for(int t : days){
+                                                   //必须注意split_hour的限制!!!
+                                                   if(t < split_day_int && active_days.get(t).size() > 0){
+                                                       user_active_days ++;
+                                                       Map<String,Map<Integer,Integer>> m5 = active_days.get(t);
+                                                       //更新品牌访问次数和品牌访问天数
+                                                       if(m5.containsKey(bid)){
+                                                           brand_1234_days ++;
+                                                           Map<Integer,Integer> m6 = m5.get(bid);
+                                                           brand_1234_times += m6.get(1);
+                                                           brand_1234_times += m6.get(2);
+                                                           brand_1234_times += m6.get(3);
+                                                           brand_1234_times += m6.get(4);
+                                                           
+                                                           if(m6.get(4) > 0){
+                                                               brand_4_days ++;
+                                                           }
+                                                           
+                                                           
+                                                       }
+                                                       String[] bs = m5.keySet().toArray(new String[0]);
+                                                       if(bs != null){
+                                                           
+                                                           //更新浏览天数、收藏天数...
+                                                           boolean flag1 = false,flag2 = false,flag3 = false,flag4 = false,flag5 = false;
+                                                           
+                                                           flag5 = m5.containsKey(bid);
+                                                           
+                                                           for(String bname : bs){
+                                                               if(!flag1 && m5.get(bname).get(1) > 0){
+                                                                   user_1_days ++;
+                                                                   flag1 = true;
+                                                               }
+                                                               if(!flag2 && m5.get(bname).get(2) > 0){
+                                                                   user_2_days ++;
+                                                                   flag2 = true;
+                                                               }
+                                                               if(!flag3 && m5.get(bname).get(3) > 0){
+                                                                   user_3_days ++;
+                                                                   flag3 = true;
+                                                               }
+                                                               if(!flag4 && m5.get(bname).get(4) > 0){
+                                                                   user_4_days ++;
+                                                                   flag4 = true;
+                                                               }
+                                                               
+                                                               if(flag5){
+                                                                   x_day_total_1234_times ++;
+                                                               }
+                                                               if(flag1 && flag2 && flag3 && flag4 && !flag5){
+                                                                   break;
+                                                               }
+                                                           }
+                                                       }
+                                                   }
+                                               }
                                             }
                                             
+                                            //开始生成比率特征
+                                            if(total_1_ct > 0){
+                                                f.bilv_feature1 = m2.get(720).get(1) / total_1_ct;
+                                                f.bilv_feature2 = (m2.get(720).get(2) + m2.get(720).get(3) + m2.get(720).get(4)) / total_1_ct;
+                                            }
                                             
+                                            if(total_4_ct > 0){
+                                                f.bilv_feature3 = m2.get(720).get(4) / total_4_ct;
+                                            }
+                                            
+                                            if(x_day_total_1234_times > 0){
+                                                f.bilv_feature4 = brand_1234_times / x_day_total_1234_times;
+                                            }
+                                            
+                                            if(total_1_ct > 0){
+                                                f.bilv_feature5 = m2.get(24).get(1) / total_1_ct;
+                                                f.bilv_feature6 = m2.get(12).get(1) / total_1_ct;
+                                                f.bilv_feature7 = m2.get(3).get(1) / total_1_ct;
+                                                f.bilv_feature8 = m2.get(1).get(1) / total_1_ct;
+                                            }
+                                            
+                                            if(user_active_days > 0){
+                                                f.bilv_feature9 = brand_1234_days / user_active_days;
+                                            }
+                                            
+                                            if(user_4_days > 0){
+                                                f.bilv_feature10 = brand_4_days / user_4_days;
+                                            }
+                                            
+                                            //计算转化特征
+                                            if(m2.get(720).get(1) > 0){
+                                                f.zhuanhua_feature1 = m2.get(720).get(4) / m2.get(720).get(1);
+                                                
+                                                f.zhuanhua_feature4 = m2.get(720).get(2) / m2.get(720).get(1);
+                                                
+                                                f.zhuanhua_feature5 = m2.get(720).get(3) / m2.get(720).get(1);
+                                            }
+                                            if(m2.get(720).get(2) > 0){
+                                                f.zhuanhua_feature2 = m2.get(720).get(4) / m2.get(720).get(2);
+                                                
+                                            }
+                                            if(m2.get(720).get(3) > 0){
+                                                f.zhuanhua_feature3 = m2.get(720).get(4) / m2.get(720).get(3);
+                                            }
+                                            
+                                            res.add(new Tuple2<Long,Features>(split_h,f));
                                         }
                                         
                                     }
                                 }
                             }
-                            
-                            
                         }
                     }
-                    return null;
+                    return res;
                 }});
+       
+       JavaPairRDD<Long,Iterable<Features>> grouped_features = features.groupByKey();
+       //将同一split_hour的特征信息输出
+       grouped_features.foreach(new VoidFunction<Tuple2<Long,Iterable<Features>>>(){
+
+        public void call(Tuple2<Long, Iterable<Features>> arg0)
+                throws Exception {
+            //输出
+            StringBuilder sb = new StringBuilder();
+            sb.append("用户在前1小时浏览品牌次数,用户在前1小时收藏品牌次数,用户在前1小时加入购物车次数,用户在前1小时购买品牌次数,"
+                    + "用户在前6小时浏览品牌次数,用户在前6小时收藏品牌次数,用户在前6小时加入购物车次数,用户在前6小时购买品牌次数,"
+                    + "用户在前24小时浏览品牌次数,用户在前24小时收藏品牌次数,用户在前24小时加入购物车次数,用户在前24小时购买品牌次数,"
+                    + "用户在前72小时浏览品牌次数,用户在前72小时收藏品牌次数,用户在前72小时加入购物车次数,用户在前72小时购买品牌次数,"
+                    + "用户在前7天浏览品牌次数,用户在前7天收藏品牌次数,用户在前7天加入购物车次数,用户在前7天购买品牌次数,"
+                    + "用户在前30天浏览品牌次数,用户在前30天收藏品牌次数,用户在前30天加入购物车次数,用户在前30天购买品牌次数,"
+                    + "最后一次对品牌的浏览到最后一刻的时间间隔,最后一次对品牌的收藏到最后一刻的时间间隔,最后一次对品牌的加入购物车到最后一刻的时间间隔,"
+                    + "最后一次对品牌的购买到最后一刻的时间间隔,用户对品牌第一次浏览与最后一次的时间间隔,用户对品牌第一次收藏与最后一次的时间间隔,"
+                    + "用户对品牌第一次加入购物车与最后一次的时间间隔,用户对品牌第一次购买与最后一次的时间间隔,浏览品牌的次数/总浏览次数,"
+                    + "购买收藏加入购物车总次数/总浏览的次数,购买品牌次数/总购买次数,访问品牌的那些日期中访问该品牌次数/总访问次数,"
+                    + "截止前24小时浏览品牌次数/总浏览次数,截止前12小时浏览品牌次数/总浏览次数,截止前3小时浏览品牌次数/总浏览次数,"
+                    + "截止前1小时浏览品牌次数/总浏览次数,用户访问品牌的天数/活跃总天数,用户购买品牌的天数/有购买行为总天数,"
+                    + "用户对品牌浏览-购买转化率,用户对品牌收藏-购买转化率,用户对品牌加入购物车-购买转化率,用户对品牌浏览-收藏转化率,"
+                    + "用户对品牌浏览-加入购物车转化率" + "\n");
+            for(Features f : arg0._2){
+                sb.append(f.tongji_feature1 + "," + f.tongji_feature2 + "," + f.tongji_feature3 + "," + f.tongji_feature4 + "," +
+                        f.tongji_feature5 + "," + f.tongji_feature6 + "," + f.tongji_feature7 + "," + f.tongji_feature8 + "," +
+                        f.tongji_feature9 + "," + f.tongji_feature10 + "," + f.tongji_feature11 + "," + f.tongji_feature12 + "," +
+                        f.tongji_feature13 + "," + f.tongji_feature14 + "," + f.tongji_feature15 + "," + f.tongji_feature16 + "," +
+                        f.tongji_feature17 + "," + f.tongji_feature18 + "," + f.tongji_feature19 + "," + f.tongji_feature20 + "," +
+                        f.tongji_feature21 + "," + f.tongji_feature22 + "," + f.tongji_feature23 + "," + f.tongji_feature24 + "," +
+                        f.tongji_feature25 + "," + f.tongji_feature26 + "," + f.tongji_feature27 + "," + f.tongji_feature28 + "," +
+                        f.tongji_feature29 + "," + f.tongji_feature30 + "," + f.tongji_feature31 + "," + f.tongji_feature32 + "," +
+                        f.bilv_feature1 + "," + f.bilv_feature2 + "," + f.bilv_feature3 + "," + f.bilv_feature4 + "," + 
+                        f.bilv_feature5 + "," + f.bilv_feature6 + "," + f.bilv_feature7 + "," + f.bilv_feature8 + "," + 
+                        f.bilv_feature9 + "," + f.bilv_feature10 + "," + 
+                        f.zhuanhua_feature1 + "," + f.zhuanhua_feature2 + "," + f.zhuanhua_feature3 + "," + 
+                        f.zhuanhua_feature4 + "," + f.zhuanhua_feature5 + "," + "\n");
+            }
+            BufferedWriter bw = new BufferedWriter(new FileWriter(output_prefix + "split_day_" + split_dates.get(arg0._1) + ".csv"));
+            bw.write(sb.toString());
+            bw.close();
+        }});
     }
 
 }
-
-
-/*//-1118用来记录用户在11-18日是否对该商品产生访问行为.因为插入数据时会进行过滤,所以可以放心为每个
-//split_hour分配30个存储区
-for(int k = -1218;k <= -1118;k ++){
-    if(k == -1200){
-        k = -1131;
-    }
-    else{
-        Map<Integer,Integer> m = new HashMap<Integer,Integer>();
-        m.put(1, 0);
-        m.put(2, 0);
-        m.put(3, 0);
-        m.put(4, 0);
-        mm2.put((long) k, m);
-    }
-    
-    //另外还需记录各品牌第一次和最后一次访问时间,设置一对特殊的tongji_hour 来表征这两项信息,-1表示第一次,-2表示最后一次
-                                    Map<Integer,Integer> tmp1 = new HashMap<Integer,Integer>();
-                                    tmp1.put(1, 0);
-                                    tmp1.put(2, 0);
-                                    tmp1.put(3, 0);
-                                    tmp1.put(4, 0);
-                                    
-                                    mm2.put((long) -1, tmp1);
-                                    
-                                    Map<Integer,Integer> tmp2 = new HashMap<Integer,Integer>();
-                                    tmp2.put(1, 0);
-                                    tmp2.put(2, 0);
-                                    tmp2.put(3, 0);
-                                    tmp2.put(4, 0);
-                                    
-                                    mm2.put((long) -2, tmp2);
-}*/
