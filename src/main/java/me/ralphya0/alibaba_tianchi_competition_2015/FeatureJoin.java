@@ -1,9 +1,11 @@
 package me.ralphya0.alibaba_tianchi_competition_2015;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -71,11 +73,12 @@ public class FeatureJoin {
                 }
             }
         }
+        br.close();
         
         final Broadcast<Map<String,List<String>>> buy = sc.broadcast(buy_history);
         final Broadcast<String> split = sc.broadcast(split_day);
         
-        //循环合并每一个日期的特征文件
+        //合并三个特征文件
         JavaRDD<String> ui_lines = sc.textFile(ui_input);
         
         //先把ui特征文件的第一行字段说明过滤掉然后生成join主键
@@ -157,23 +160,26 @@ public class FeatureJoin {
                                 Tuple2<String, Tuple2<String, String>> arg0)
                                 throws Exception {
                             //拼接字符串
-                            String ui_i_str = arg0._2._1;
+                            String ui_u_str = arg0._2._1;
                             String i_str = arg0._2._2;
                             //合并12-19文件时不应包含type字段!!!
                             if(split.value().equals("12-19")){
-                                return ui_i_str + "," + i_str;
+                                return ui_u_str + "," + i_str;
                             }
                             else{
-                                String[] al = ui_i_str.split(",");
+                                String[] al = ui_u_str.split(",");
                                 if(al != null){
                                     String user_id = al[0];
                                     String item_id = al[1];
                                     if(buy.value().containsKey(user_id)){
                                         if(buy.value().get(user_id).contains(item_id)){
-                                            return ui_i_str + "," + i_str + ",1";
+                                            return ui_u_str + "," + i_str + ",1";
                                         }
                                         else
-                                            return ui_i_str + "," + i_str + ",0"; 
+                                            return ui_u_str + "," + i_str + ",0"; 
+                                    }
+                                    else{
+                                        return ui_u_str + "," + i_str + ",0";
                                     }
                                 }
                             }
@@ -182,7 +188,13 @@ public class FeatureJoin {
                         
                     });
         //输出结果
-        
+        List<String> rs = results.collect();
+        BufferedWriter bw = new BufferedWriter(new FileWriter(out));
+        for(String s : rs){
+            bw.write(s);
+        }
+        bw.close();
+        System.out.println("处理结束,结果写入" + out);
     }
     
 }
