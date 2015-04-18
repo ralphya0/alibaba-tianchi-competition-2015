@@ -121,7 +121,6 @@ public class FeatureExtraction {
                 split_date = args[3].trim();
             }
             
-            //String input2 = "file:/home/tianchi/project-base/tianchi/yaoxin/result/train_user_filtered.csv";
             if(action.equals("filter")){
                 //过滤原始数据
               //垂直商品
@@ -243,13 +242,13 @@ public class FeatureExtraction {
                                             if(al != null){
                                                 //将时间转换为小时(自11-18零时起)
                                                 String date = al[0];
+                                                int h = Integer.parseInt(al[1]);
                                                 
                                                 if(date != null){
                                                     String[] al2 = date.split("-");
                                                     if(al2 != null && al2.length > 0){
                                                         int month = Integer.parseInt(al2[1]);
                                                         int day = Integer.parseInt(al2[2]);
-                                                        int h = Integer.parseInt(al[1]);
                                                         if(month == 11){
                                                             record.hour = (day - 18) * 24 + h;
                                                         }
@@ -297,6 +296,11 @@ public class FeatureExtraction {
                                   }
                                   
                                   for(InteractionRecord i : arg0._2){
+                                      //必须先将timestamp不符合要求的记录过滤掉!!!
+                                      if(i.hour >= split_hour.value()){
+                                          continue;
+                                      }
+                                      
                                       
                                       if(!history.containsKey(i.item_id)){
                                               Map<Integer,Map<Integer,Integer>> mm3 = new HashMap<Integer,Map<Integer,Integer>>();
@@ -605,8 +609,9 @@ public class FeatureExtraction {
                      
                      //输出统计结果
                      List<Features> results = features.collect();
-                     StringBuilder sb = new StringBuilder();
-                     sb.append("user_id,item_id,用户在前1小时浏览品牌次数,用户在前1小时收藏品牌次数,用户在前1小时加入购物车次数,用户在前1小时购买品牌次数,"
+                     
+                     BufferedWriter bw = new BufferedWriter(new FileWriter(output,true));
+                     bw.write("user_id,item_id,用户在前1小时浏览品牌次数,用户在前1小时收藏品牌次数,用户在前1小时加入购物车次数,用户在前1小时购买品牌次数,"
                              + "用户在前6小时浏览品牌次数,用户在前6小时收藏品牌次数,用户在前6小时加入购物车次数,用户在前6小时购买品牌次数,"
                              + "用户在前24小时浏览品牌次数,用户在前24小时收藏品牌次数,用户在前24小时加入购物车次数,用户在前24小时购买品牌次数,"
                              + "用户在前72小时浏览品牌次数,用户在前72小时收藏品牌次数,用户在前72小时加入购物车次数,用户在前72小时购买品牌次数,"
@@ -621,8 +626,7 @@ public class FeatureExtraction {
                              + "用户对品牌浏览-购买转化率,用户对品牌收藏-购买转化率,用户对品牌加入购物车-购买转化率,用户对品牌浏览-收藏转化率,"
                              + "用户对品牌浏览-加入购物车转化率" + "\n");
                      for(Features f : results){
-                           System.out.println("输出" + f.user_id + "," + f.item_id);
-                           sb.append(f.user_id + "," + f.item_id + "," + f.tongji_feature1 + "," + f.tongji_feature2 + "," + f.tongji_feature3 + "," + f.tongji_feature4 + "," +
+                         bw.write(f.user_id + "," + f.item_id + "," + f.tongji_feature1 + "," + f.tongji_feature2 + "," + f.tongji_feature3 + "," + f.tongji_feature4 + "," +
                                    f.tongji_feature5 + "," + f.tongji_feature6 + "," + f.tongji_feature7 + "," + f.tongji_feature8 + "," +
                                    f.tongji_feature9 + "," + f.tongji_feature10 + "," + f.tongji_feature11 + "," + f.tongji_feature12 + "," +
                                    f.tongji_feature13 + "," + f.tongji_feature14 + "," + f.tongji_feature15 + "," + f.tongji_feature16 + "," +
@@ -635,10 +639,9 @@ public class FeatureExtraction {
                                    f.bilv_feature9 + "," + f.bilv_feature10 + "," + 
                                    f.zhuanhua_feature1 + "," + f.zhuanhua_feature2 + "," + f.zhuanhua_feature3 + "," + 
                                    f.zhuanhua_feature4 + "," + f.zhuanhua_feature5 + "," + "\n");
+                           
                      }
                      
-                     BufferedWriter bw = new BufferedWriter(new FileWriter(output));
-                     bw.write(sb.toString());
                      bw.close();
                      System.out.println("done! 统计结果已输出至 " + output);
                     }
