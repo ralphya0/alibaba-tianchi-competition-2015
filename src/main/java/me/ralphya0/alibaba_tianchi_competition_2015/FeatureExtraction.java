@@ -638,7 +638,7 @@ public class FeatureExtraction {
                                    f.bilv_feature5 + "," + f.bilv_feature6 + "," + f.bilv_feature7 + "," + f.bilv_feature8 + "," + 
                                    f.bilv_feature9 + "," + f.bilv_feature10 + "," + 
                                    f.zhuanhua_feature1 + "," + f.zhuanhua_feature2 + "," + f.zhuanhua_feature3 + "," + 
-                                   f.zhuanhua_feature4 + "," + f.zhuanhua_feature5 + "," + "\n");
+                                   f.zhuanhua_feature4 + "," + f.zhuanhua_feature5 + "\n");
                            
                      }
                      
