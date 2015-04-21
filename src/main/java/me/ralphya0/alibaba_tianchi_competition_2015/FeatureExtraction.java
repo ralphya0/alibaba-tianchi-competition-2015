@@ -121,6 +121,7 @@ public class FeatureExtraction {
                 split_date = args[3].trim();
             }
             
+            //String input2 = "file:/home/tianchi/project-base/tianchi/yaoxin/result/train_user_filtered.csv";
             if(action.equals("filter")){
                 //过滤原始数据
               //垂直商品
@@ -167,13 +168,13 @@ public class FeatureExtraction {
                         
                         //将过滤后的结果保存起来作为后续计算的输入文件
                         List<String> records = lines.collect();
-                        StringBuilder sb = new StringBuilder();
+                        //StringBuilder sb = new StringBuilder();
+                        BufferedWriter bw = new BufferedWriter(new FileWriter(output,true));
                         for(String s : records){
-                            sb.append(s + "\n");
+                            //sb.append(s + "\n");
+                            bw.write(s + "\n");
                         }
                         
-                        BufferedWriter bw = new BufferedWriter(new FileWriter(output));
-                        bw.write(sb.toString());
                         bw.close();
                         System.out.println("过滤结果已写入输出文件 " + output);
                 
@@ -242,13 +243,13 @@ public class FeatureExtraction {
                                             if(al != null){
                                                 //将时间转换为小时(自11-18零时起)
                                                 String date = al[0];
-                                                int h = Integer.parseInt(al[1]);
                                                 
                                                 if(date != null){
                                                     String[] al2 = date.split("-");
                                                     if(al2 != null && al2.length > 0){
                                                         int month = Integer.parseInt(al2[1]);
                                                         int day = Integer.parseInt(al2[2]);
+                                                        int h = Integer.parseInt(al[1]);
                                                         if(month == 11){
                                                             record.hour = (day - 18) * 24 + h;
                                                         }
@@ -296,12 +297,12 @@ public class FeatureExtraction {
                                   }
                                   
                                   for(InteractionRecord i : arg0._2){
-                                      //必须先将timestamp不符合要求的记录过滤掉!!!
+                                	//必须先将timestamp不符合要求的记录过滤掉!!!
                                       if(i.hour >= split_hour.value()){
                                           continue;
                                       }
-                                      
-                                      
+                                	  
+                                	  
                                       if(!history.containsKey(i.item_id)){
                                               Map<Integer,Map<Integer,Integer>> mm3 = new HashMap<Integer,Map<Integer,Integer>>();
                                               
@@ -609,9 +610,8 @@ public class FeatureExtraction {
                      
                      //输出统计结果
                      List<Features> results = features.collect();
-                     
-                     BufferedWriter bw = new BufferedWriter(new FileWriter(output,true));
-                     bw.write("user_id,item_id,用户在前1小时浏览品牌次数,用户在前1小时收藏品牌次数,用户在前1小时加入购物车次数,用户在前1小时购买品牌次数,"
+                     //StringBuilder sb = new StringBuilder();
+                     /*sb.append("user_id,item_id,用户在前1小时浏览品牌次数,用户在前1小时收藏品牌次数,用户在前1小时加入购物车次数,用户在前1小时购买品牌次数,"
                              + "用户在前6小时浏览品牌次数,用户在前6小时收藏品牌次数,用户在前6小时加入购物车次数,用户在前6小时购买品牌次数,"
                              + "用户在前24小时浏览品牌次数,用户在前24小时收藏品牌次数,用户在前24小时加入购物车次数,用户在前24小时购买品牌次数,"
                              + "用户在前72小时浏览品牌次数,用户在前72小时收藏品牌次数,用户在前72小时加入购物车次数,用户在前72小时购买品牌次数,"
@@ -624,9 +624,39 @@ public class FeatureExtraction {
                              + "截止前24小时浏览品牌次数/总浏览次数,截止前12小时浏览品牌次数/总浏览次数,截止前3小时浏览品牌次数/总浏览次数,"
                              + "截止前1小时浏览品牌次数/总浏览次数,用户访问品牌的天数/活跃总天数,用户购买品牌的天数/有购买行为总天数,"
                              + "用户对品牌浏览-购买转化率,用户对品牌收藏-购买转化率,用户对品牌加入购物车-购买转化率,用户对品牌浏览-收藏转化率,"
-                             + "用户对品牌浏览-加入购物车转化率" + "\n");
+                             + "用户对品牌浏览-加入购物车转化率" + "\n");*/
+                     System.out.println("开始输出计算结果");
+                     BufferedWriter bw = new BufferedWriter(new FileWriter(output,true));
+                     /*bw.write("user_id,item_id,用户在前1小时浏览品牌次数,用户在前1小时收藏品牌次数,用户在前1小时加入购物车次数,用户在前1小时购买品牌次数,"
+                             + "用户在前6小时浏览品牌次数,用户在前6小时收藏品牌次数,用户在前6小时加入购物车次数,用户在前6小时购买品牌次数,"
+                             + "用户在前24小时浏览品牌次数,用户在前24小时收藏品牌次数,用户在前24小时加入购物车次数,用户在前24小时购买品牌次数,"
+                             + "用户在前72小时浏览品牌次数,用户在前72小时收藏品牌次数,用户在前72小时加入购物车次数,用户在前72小时购买品牌次数,"
+                             + "用户在前7天浏览品牌次数,用户在前7天收藏品牌次数,用户在前7天加入购物车次数,用户在前7天购买品牌次数,"
+                             + "用户在前30天浏览品牌次数,用户在前30天收藏品牌次数,用户在前30天加入购物车次数,用户在前30天购买品牌次数,"
+                             + "最后一次对品牌的浏览到最后一刻的时间间隔,最后一次对品牌的收藏到最后一刻的时间间隔,最后一次对品牌的加入购物车到最后一刻的时间间隔,"
+                             + "最后一次对品牌的购买到最后一刻的时间间隔,用户对品牌第一次浏览与最后一次的时间间隔,用户对品牌第一次收藏与最后一次的时间间隔,"
+                             + "用户对品牌第一次加入购物车与最后一次的时间间隔,用户对品牌第一次购买与最后一次的时间间隔,浏览品牌的次数/总浏览次数,"
+                             + "购买收藏加入购物车总次数/总浏览的次数,购买品牌次数/总购买次数,访问品牌的那些日期中访问该品牌次数/总访问次数,"
+                             + "截止前24小时浏览品牌次数/总浏览次数,截止前12小时浏览品牌次数/总浏览次数,截止前3小时浏览品牌次数/总浏览次数,"
+                             + "截止前1小时浏览品牌次数/总浏览次数,用户访问品牌的天数/活跃总天数,用户购买品牌的天数/有购买行为总天数,"
+                             + "用户对品牌浏览-购买转化率,用户对品牌收藏-购买转化率,用户对品牌加入购物车-购买转化率,用户对品牌浏览-收藏转化率,"
+                             + "用户对品牌浏览-加入购物车转化率" + "\n");*/
                      for(Features f : results){
-                         bw.write(f.user_id + "," + f.item_id + "," + f.tongji_feature1 + "," + f.tongji_feature2 + "," + f.tongji_feature3 + "," + f.tongji_feature4 + "," +
+                           /*sb.append(f.user_id + "," + f.item_id + "," + f.tongji_feature1 + "," + f.tongji_feature2 + "," + f.tongji_feature3 + "," + f.tongji_feature4 + "," +
+                                   f.tongji_feature5 + "," + f.tongji_feature6 + "," + f.tongji_feature7 + "," + f.tongji_feature8 + "," +
+                                   f.tongji_feature9 + "," + f.tongji_feature10 + "," + f.tongji_feature11 + "," + f.tongji_feature12 + "," +
+                                   f.tongji_feature13 + "," + f.tongji_feature14 + "," + f.tongji_feature15 + "," + f.tongji_feature16 + "," +
+                                   f.tongji_feature17 + "," + f.tongji_feature18 + "," + f.tongji_feature19 + "," + f.tongji_feature20 + "," +
+                                   f.tongji_feature21 + "," + f.tongji_feature22 + "," + f.tongji_feature23 + "," + f.tongji_feature24 + "," +
+                                   f.tongji_feature25 + "," + f.tongji_feature26 + "," + f.tongji_feature27 + "," + f.tongji_feature28 + "," +
+                                   f.tongji_feature29 + "," + f.tongji_feature30 + "," + f.tongji_feature31 + "," + f.tongji_feature32 + "," +
+                                   f.bilv_feature1 + "," + f.bilv_feature2 + "," + f.bilv_feature3 + "," + f.bilv_feature4 + "," + 
+                                   f.bilv_feature5 + "," + f.bilv_feature6 + "," + f.bilv_feature7 + "," + f.bilv_feature8 + "," + 
+                                   f.bilv_feature9 + "," + f.bilv_feature10 + "," + 
+                                   f.zhuanhua_feature1 + "," + f.zhuanhua_feature2 + "," + f.zhuanhua_feature3 + "," + 
+                                   f.zhuanhua_feature4 + "," + f.zhuanhua_feature5 + "," + "\n");*/
+                           
+                           bw.write(f.user_id + "," + f.item_id + "," + f.tongji_feature1 + "," + f.tongji_feature2 + "," + f.tongji_feature3 + "," + f.tongji_feature4 + "," +
                                    f.tongji_feature5 + "," + f.tongji_feature6 + "," + f.tongji_feature7 + "," + f.tongji_feature8 + "," +
                                    f.tongji_feature9 + "," + f.tongji_feature10 + "," + f.tongji_feature11 + "," + f.tongji_feature12 + "," +
                                    f.tongji_feature13 + "," + f.tongji_feature14 + "," + f.tongji_feature15 + "," + f.tongji_feature16 + "," +
@@ -639,8 +669,8 @@ public class FeatureExtraction {
                                    f.bilv_feature9 + "," + f.bilv_feature10 + "," + 
                                    f.zhuanhua_feature1 + "," + f.zhuanhua_feature2 + "," + f.zhuanhua_feature3 + "," + 
                                    f.zhuanhua_feature4 + "," + f.zhuanhua_feature5 + "\n");
-                           
                      }
+                     
                      
                      bw.close();
                      System.out.println("done! 统计结果已输出至 " + output);
