@@ -16,6 +16,7 @@ import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.PairFunction;
+import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.mllib.linalg.Vectors;
 import org.apache.spark.mllib.regression.LabeledPoint;
 import org.apache.spark.mllib.tree.GradientBoostedTrees;
@@ -95,9 +96,10 @@ public class GDBTProcessing {
                 boostingStrategy.treeStrategy().setCategoricalFeaturesInfo(categoricalFeaturesInfo);
                 
 
-                final GradientBoostedTreesModel model =
+                GradientBoostedTreesModel model =
                   GradientBoostedTrees.train(train_data, boostingStrategy);
-
+                
+                final Broadcast<GradientBoostedTreesModel> md = sc.broadcast(model);
                 //现在的问题:测试集是什么,采样比率是啥意思,要用采样的数据训练模型而未采样的数据做验证?
                 //合理的方式:用17号的数据训练模型(数据本身以及17号当天的购买标签),再将18号零点之前的数据带入模型让其预测18号当天是否会购买
                 
@@ -105,7 +107,7 @@ public class GDBTProcessing {
                     @Override
                     public Tuple2<Double, Double> call(LabeledPoint arg0)
                             throws Exception {
-                        return new Tuple2<Double,Double>(model.predict(arg0.features()), arg0.label());
+                        return new Tuple2<Double,Double>(md.value().predict(arg0.features()), arg0.label());
                     }
                     
                 });
@@ -117,7 +119,7 @@ public class GDBTProcessing {
                     public Boolean call(Tuple2<Double, Double> arg0)
                             throws Exception {
                         //正确预测到的
-                        return arg0._1 == arg0._2;
+                        return arg0._1 == 1 && arg0._2 == 1;
                     }
                 }).count();
                 
@@ -127,16 +129,20 @@ public class GDBTProcessing {
                     public Boolean call(Tuple2<Double, Double> arg0)
                             throws Exception {
 
-                        return arg0._1 == 1.0;
+                        return arg0._1 == 1;
                     }
                 }).count();
                 
+                System.out.println();
+                System.out.println("----------------------------------------------");
+                System.out.println("模型推荐购买个数 " + pre_buy_num);
+                System.out.println("模型正确预测个数 " + correct_num);
                 if(buy_num != 0 && pre_buy_num != 0){
                     double precision = correct_num / pre_buy_num;
                     double recall = correct_num / buy_num;
                     double f1 = (2 * precision * recall) / (precision + recall);
-                    System.out.println();
-                    System.out.println("----------------------------------------------");
+                    
+                    System.out.println("参数选择: NumIterations = " + gdbt_arg1 + ", MaxDepth = " + gdbt_arg2);
                     System.out.println("训练文件: " + file_path1);
                     System.out.println("预测文件: " + file_path2);
                     System.out.println("precision = " + precision);
