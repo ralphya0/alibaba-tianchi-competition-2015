@@ -37,19 +37,14 @@ public class GDBTProcessing {
         
         String gdbt_a1 = null;
         String gdbt_a2 = null;
-        //用于offline-test
-        String buy_n = null;
         int gdbt_arg1 = 0;
         int gdbt_arg2 = 0;
-        long buy_num = 0;
         if(args != null){
             action = args[0].trim();
             file_path1 = args[1].trim();
             file_path2 = args[2].trim();
             gdbt_a1 = args[3].trim();
             gdbt_a2 = args[4].trim();
-            buy_n = args[5].trim();
-            
         }
         
         if(action != null && action.equals("input-gen")){
@@ -81,7 +76,6 @@ public class GDBTProcessing {
         else if(action != null && action.equals("offline-test")){
                 gdbt_arg1 = Integer.parseInt(gdbt_a1);
                 gdbt_arg2 = Integer.parseInt(gdbt_a2);
-                buy_num = Long.parseLong(buy_n);
                 SparkConf conf = new SparkConf().setAppName("GDBT-algorithm").setMaster("spark://tianchi-node1:7077");
                 JavaSparkContext sc = new JavaSparkContext(conf);
                 
@@ -133,13 +127,22 @@ public class GDBTProcessing {
                     }
                 }).count();
                 
+                long buy_num = test_data.filter(new Function<LabeledPoint,Boolean>(){
+
+                    @Override
+                    public Boolean call(LabeledPoint arg0) throws Exception {
+                        // TODO Auto-generated method stub
+                        return arg0.label() == 1;
+                    }}).count();
+                
                 System.out.println();
                 System.out.println("----------------------------------------------");
+                System.out.println("真实购买个数 " + buy_num);
                 System.out.println("模型推荐购买个数 " + pre_buy_num);
                 System.out.println("模型正确预测个数 " + correct_num);
                 if(buy_num != 0 && pre_buy_num != 0){
-                    double precision = correct_num / pre_buy_num;
-                    double recall = correct_num / buy_num;
+                    double precision = (double)correct_num / (double)pre_buy_num;
+                    double recall = (double)correct_num / (double)buy_num;
                     double f1 = (2 * precision * recall) / (precision + recall);
                     
                     System.out.println("参数选择: NumIterations = " + gdbt_arg1 + ", MaxDepth = " + gdbt_arg2);
