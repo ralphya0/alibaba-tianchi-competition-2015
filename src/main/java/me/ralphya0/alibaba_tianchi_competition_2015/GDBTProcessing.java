@@ -37,14 +37,21 @@ public class GDBTProcessing {
         
         String gdbt_a1 = null;
         String gdbt_a2 = null;
+        String gdbt_a3 = null;
+        String gdbt_a4 = null;
         int gdbt_arg1 = 0;
         int gdbt_arg2 = 0;
+        double gdbt_arg3 = 0;
+        double gdbt_arg4 = 0;
+                
         if(args != null){
             action = args[0].trim();
             file_path1 = args[1].trim();
             file_path2 = args[2].trim();
             gdbt_a1 = args[3].trim();
             gdbt_a2 = args[4].trim();
+            gdbt_a3 = args[5].trim();
+            gdbt_a4 = args[6].trim();
         }
         
         if(action != null && action.equals("input-gen")){
@@ -76,6 +83,9 @@ public class GDBTProcessing {
         else if(action != null && action.equals("offline-test")){
                 gdbt_arg1 = Integer.parseInt(gdbt_a1);
                 gdbt_arg2 = Integer.parseInt(gdbt_a2);
+                gdbt_arg3 = Double.parseDouble(gdbt_a3);
+                gdbt_arg4 = Double.parseDouble(gdbt_a4);
+                
                 SparkConf conf = new SparkConf().setAppName("GDBT-algorithm").setMaster("spark://tianchi-node1:7077");
                 JavaSparkContext sc = new JavaSparkContext(conf);
                 
@@ -86,6 +96,8 @@ public class GDBTProcessing {
                 boostingStrategy.setNumIterations(gdbt_arg1);
                 boostingStrategy.getTreeStrategy().setNumClasses(2);
                 boostingStrategy.getTreeStrategy().setMaxDepth(gdbt_arg2);
+                boostingStrategy.setLearningRate(gdbt_arg3);
+                boostingStrategy.getTreeStrategy().setSubsamplingRate(gdbt_arg4);
                 Map<Integer, Integer> categoricalFeaturesInfo = new HashMap<Integer, Integer>();
                 boostingStrategy.treeStrategy().setCategoricalFeaturesInfo(categoricalFeaturesInfo);
                 
