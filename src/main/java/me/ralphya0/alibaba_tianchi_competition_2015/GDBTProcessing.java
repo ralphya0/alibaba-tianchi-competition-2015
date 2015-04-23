@@ -20,8 +20,10 @@ import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.mllib.linalg.Vectors;
 import org.apache.spark.mllib.regression.LabeledPoint;
 import org.apache.spark.mllib.tree.GradientBoostedTrees;
+import org.apache.spark.mllib.tree.RandomForest;
 import org.apache.spark.mllib.tree.configuration.BoostingStrategy;
 import org.apache.spark.mllib.tree.model.GradientBoostedTreesModel;
+import org.apache.spark.mllib.tree.model.RandomForestModel;
 import org.apache.spark.mllib.util.MLUtils;
 
 import scala.Tuple2;
@@ -166,8 +168,85 @@ public class GDBTProcessing {
                     
                 }
         }
-        else if(action != null && action.equals("submit")){
-           
+        else if(action != null && action.equals("rf")){
+            gdbt_arg1 = Integer.parseInt(gdbt_a1);
+            gdbt_arg2 = Integer.parseInt(gdbt_a2);
+            SparkConf conf = new SparkConf().setAppName("Random-Forest-algorithm").setMaster("spark://tianchi-node1:7077");
+            JavaSparkContext sc = new JavaSparkContext(conf);
+            JavaRDD<LabeledPoint> train_data = MLUtils.loadLibSVMFile(sc.sc(), file_path1).toJavaRDD();
+            JavaRDD<LabeledPoint> test_data = MLUtils.loadLibSVMFile(sc.sc(), file_path2).toJavaRDD();
+            
+            Integer numClasses = 2;
+            HashMap<Integer, Integer> categoricalFeaturesInfo = new HashMap<Integer, Integer>();
+            Integer numTrees = gdbt_arg1; // Use more in practice.
+            String featureSubsetStrategy = "auto"; // Let the algorithm choose.
+            String impurity = "gini";
+            Integer maxDepth = gdbt_arg2;
+            Integer maxBins = 32;
+            Integer seed = 12345;
+
+            RandomForestModel model = RandomForest.trainClassifier(train_data, numClasses,
+              categoricalFeaturesInfo, numTrees, featureSubsetStrategy, impurity, maxDepth, maxBins,
+              seed);
+            
+            final Broadcast<RandomForestModel> md = sc.broadcast(model);
+            
+            JavaPairRDD<Double,Double> prediction = test_data.mapToPair(new PairFunction<LabeledPoint,Double,Double>(){
+                @Override
+                public Tuple2<Double, Double> call(LabeledPoint arg0)
+                        throws Exception {
+                    return new Tuple2<Double,Double>(md.value().predict(arg0.features()), arg0.label());
+                }
+                
+            });
+            
+            //计算F1,准确率和召回率
+            long correct_num = prediction.filter(new Function<Tuple2<Double,Double>,Boolean>(){
+
+                @Override
+                public Boolean call(Tuple2<Double, Double> arg0)
+                        throws Exception {
+                    //正确预测到的
+                    return arg0._1 == 1 && arg0._2 == 1;
+                }
+            }).count();
+            
+            long pre_buy_num = prediction.filter(new Function<Tuple2<Double,Double>, Boolean>(){
+
+                @Override
+                public Boolean call(Tuple2<Double, Double> arg0)
+                        throws Exception {
+
+                    return arg0._1 == 1;
+                }
+            }).count();
+            
+            long buy_num = test_data.filter(new Function<LabeledPoint,Boolean>(){
+
+                @Override
+                public Boolean call(LabeledPoint arg0) throws Exception {
+                    // TODO Auto-generated method stub
+                    return arg0.label() == 1;
+                }}).count();
+            
+            System.out.println();
+            System.out.println("----------------------------------------------");
+            System.out.println("真实购买个数 " + buy_num);
+            System.out.println("模型推荐购买个数 " + pre_buy_num);
+            System.out.println("模型正确预测个数 " + correct_num);
+            if(buy_num != 0 && pre_buy_num != 0){
+                double precision = (double)correct_num / (double)pre_buy_num;
+                double recall = (double)correct_num / (double)buy_num;
+                double f1 = (2 * precision * recall) / (precision + recall);
+                
+                System.out.println("参数选择: NumIterations = " + gdbt_arg1 + ", MaxDepth = " + gdbt_arg2);
+                System.out.println("训练文件: " + file_path1);
+                System.out.println("预测文件: " + file_path2);
+                System.out.println("precision = " + precision);
+                System.out.println("recall = " + recall);
+                System.out.println("F1 = " + f1);
+                
+            }
         }
         
         
